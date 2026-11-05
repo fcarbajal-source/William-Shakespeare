@@ -9,7 +9,7 @@ st.set_page_config(
 )
 
 st.title("📜 William Shakespeare: Scholar's Quill")
-st.caption("A conversational tutor for 10th Grade American Literature students")
+st.caption("Powered by Gemini 3.5 Lite | A conversational tutor for 10th Grade American Literature students")
 
 # Retrieve API key securely from Streamlit secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
@@ -41,15 +41,30 @@ Mandatory Output Constraints:
 2. Source Citation: At the very end of every reply, you MUST cite the specific primary or secondary source supporting your answer in square brackets (e.g., [Source: Folger Shakespeare Library, Hamlet 3.1], [Source: Shakespeare Birthplace Trust, Quiney Letter (1598)], or [Source: Shakespeare's Globe, Research & Archive - Elizabethan Staging Practices]).
 """
 
-# Initialize model (temperature set to 0.3)
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=SYSTEM_INSTRUCTION,
-    generation_config={
-        "temperature": 0.3,
-        "max_output_tokens": 220
-    }
-)
+# Select Gemini 3.5 Lite (checking both official endpoint aliases)
+@st.cache_resource
+def load_gemini_35_lite():
+    target_names = ["gemini-3.5-flash-lite", "gemini-3.5-lite"]
+    try:
+        available = [
+            m.name.replace("models/", "")
+            for m in genai.list_models()
+            if "generateContent" in m.supported_generation_methods
+        ]
+        chosen_model = next((name for name in target_names if name in available), "gemini-3.5-flash-lite")
+    except Exception:
+        chosen_model = "gemini-3.5-flash-lite"
+
+    return genai.GenerativeModel(
+        model_name=chosen_model,
+        system_instruction=SYSTEM_INSTRUCTION,
+        generation_config={
+            "temperature": 0.3,         # Language level set to 0.3
+            "max_output_tokens": 220    # Keeps response tightly bounded
+        }
+    )
+
+model = load_gemini_35_lite()
 
 # Initialize chat session state
 if "messages" not in st.session_state:
@@ -70,14 +85,11 @@ if prompt := st.chat_input("Ask the Bard a question about his plays, theatre, or
     # Constraint: Retain memory of only the last 6 user questions (12 messages total)
     windowed_messages = st.session_state.messages[-12:]
 
-    # Prepare chat history format for the model
-    gemini_contents = []
-    for m in windowed_messages:
-        role = "user" if m["role"] == "user" else "model"
-        gemini_contents.append({
-            "role": role,
-            "parts": [m["content"]]
-        })
+    # Prepare chat history format for Gemini 3.5 Lite
+    gemini_contents = [
+        {"role": ("user" if m["role"] == "user" else "model"), "parts": [m["content"]]}
+        for m in windowed_messages
+    ]
 
     # Query the model
     with st.chat_message("assistant"):
